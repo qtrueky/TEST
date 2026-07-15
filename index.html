@@ -154,7 +154,6 @@
 
         function renderGallery() {
             const gallery = document.getElementById('gallery');
-            const baseUrl = window.location.origin + "/images/"; 
 
             memeList.forEach(meme => {
                 const itemDiv = document.createElement('div');
@@ -163,7 +162,11 @@
                     <img src="./images/${meme.fileName}" class="meme-img" alt="meme">
                     <div class="meme-text">選擇底圖</div>
                 `;
-                itemDiv.addEventListener('click', () => openEditor(baseUrl + meme.fileName, "./images/" + meme.fileName));
+                
+                // 使用 URL 物件來確保在 Github Pages (例如 /repo-name/ 子目錄下) 也能產生正確的絕對路徑
+                const absolutePath = new URL("./images/" + meme.fileName, window.location.href).href;
+                
+                itemDiv.addEventListener('click', () => openEditor(absolutePath, "./images/" + meme.fileName));
                 gallery.appendChild(itemDiv);
             });
 
