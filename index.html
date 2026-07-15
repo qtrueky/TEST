@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>自訂位置迷因產生器</title>
+    <title>Handsome boys group</title>
+    <meta property="og:title" content="Handsome boys group">
+    <meta property="og:description" content="🔥失落的方舟專屬🔥">
+    <meta property="og:image" content="https://ch.line-scdn.net/0hmpIBgosZMl90Oy5vdlxNCCRmOT1HWSxUVg8mOBpuMGccdAx-Cg42UhZpGgtYcCp1QA0iSVBAMw9RYAdiSDwYThNTbhcfWz5qEg42RlBQJx8FWxAIDg/f256x256">
+    <meta property="og:type" content="website">
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="config.js"></script>
 
@@ -11,11 +15,14 @@
         body { font-family: 'PingFang TC', sans-serif; text-align: center; padding: 20px; background-color: #f4f5f6; margin: 0; }
         h2 { color: #333; margin-bottom: 10px; font-size: 22px; }
         
-        .gallery { display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; margin-top: 20px; }
-        .meme-item { background: white; padding: 10px; border-radius: 10px; width: 140px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; transition: 0.2s; }
+        .gallery { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 10px; }
+        .meme-item { background: white; padding: 6px; border-radius: 8px; width: 85px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; align-items: center; }
         .meme-item:active { transform: scale(0.95); }
-        .meme-img { width: 100%; height: 140px; object-fit: cover; border-radius: 8px; }
+        .meme-img { width: 73px; height: 73px; object-fit: cover; border-radius: 6px; }
+        .meme-text { font-size: 11px; color: #555; margin-top: 5px; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
         
+        .section-title { font-size: 15px; color: #555; text-align: left; padding-left: 15px; margin: 15px 0 5px 0; font-weight: bold; display: none; }
+
         #editor { 
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0,0,0,0.85); flex-direction: column; justify-content: center; align-items: center; z-index: 100;
@@ -47,7 +54,7 @@
             top: 75%; 
             left: 10%;
             background-color: rgba(255, 255, 255, 0.9); /* 等同 Flex 的 #FFFFFFE6 */
-            padding: 5px 10px; 
+            padding: 1px; 
             border-radius: 8px;
             color: #000;
             font-weight: bold;
@@ -87,8 +94,13 @@
 </head>
 <body>
 
-    <h2>🔥 動態拖曳迷因產生器</h2>
+    <h2>🔥失落的方舟專屬🔥</h2>
     <div id="loading" style="color:#666; margin-top: 20px;">LIFF 初始化中...</div>
+    
+    <div id="recentTitle" class="section-title">⏳ 最近使用</div>
+    <div id="recentGallery" class="gallery" style="display: none;"></div>
+
+    <div id="galleryTitle" class="section-title" style="display: block;">🖼️ 選擇底圖</div>
     <div id="gallery" class="gallery"></div>
 
     <div id="editor">
@@ -138,6 +150,8 @@
             }
         }
 
+        const RECENT_KEY = 'liff_recent_sends';
+
         function renderGallery() {
             const gallery = document.getElementById('gallery');
             const baseUrl = window.location.origin + "/images/"; 
@@ -145,10 +159,88 @@
             memeList.forEach(meme => {
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'meme-item';
-                itemDiv.innerHTML = `<img src="./images/${meme.fileName}" class="meme-img" alt="meme">`;
+                itemDiv.innerHTML = `
+                    <img src="./images/${meme.fileName}" class="meme-img" alt="meme">
+                    <div class="meme-text">選擇底圖</div>
+                `;
                 itemDiv.addEventListener('click', () => openEditor(baseUrl + meme.fileName, "./images/" + meme.fileName));
                 gallery.appendChild(itemDiv);
             });
+
+            renderRecentGallery();
+        }
+
+        function renderRecentGallery() {
+            const recentGallery = document.getElementById('recentGallery');
+            const recentTitle = document.getElementById('recentTitle');
+            let recentList = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+            
+            recentGallery.innerHTML = '';
+            
+            if (recentList.length > 0) {
+                recentTitle.style.display = 'block';
+                recentGallery.style.display = 'flex';
+                recentList.forEach(recent => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'meme-item';
+                    itemDiv.innerHTML = `
+                        <img src="${recent.relativePath}" class="meme-img" alt="meme">
+                        <div class="meme-text">${recent.text || '無文字'}</div>
+                    `;
+                    itemDiv.addEventListener('click', () => sendFromRecent(recent));
+                    recentGallery.appendChild(itemDiv);
+                });
+            } else {
+                recentTitle.style.display = 'none';
+                recentGallery.style.display = 'none';
+            }
+        }
+
+        function saveToRecent(memeData) {
+            let recentList = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+            recentList = recentList.filter(item => !(item.absolutePath === memeData.absolutePath && item.text === memeData.text));
+            
+            recentList.unshift(memeData);
+            if (recentList.length > 6) {
+                recentList.pop();
+            }
+            localStorage.setItem(RECENT_KEY, JSON.stringify(recentList));
+            renderRecentGallery();
+        }
+
+        async function sendFromRecent(recent) {
+            currentSelectedImageUrl = recent.absolutePath;
+            currentFontSize = recent.fontSize || 16;
+            isVertical = recent.isVertical || false;
+            positionPercent = { top: recent.top || "75%", left: recent.left || "10%" };
+            
+            const textToUse = recent.text === "無文字" ? "" : recent.text;
+            const flexMsg = buildFlexMessage(currentSelectedImageUrl, textToUse);
+            
+            try {
+                if (liff.isInClient()) {
+                    await liff.sendMessages([flexMsg]);
+                } else {
+                    const result = await liff.shareTargetPicker([flexMsg]);
+                    if (!result) return;
+                }
+                
+                // 將此紀錄更新到最前面
+                saveToRecent({
+                    absolutePath: currentSelectedImageUrl,
+                    relativePath: recent.relativePath,
+                    text: recent.text,
+                    top: positionPercent.top,
+                    left: positionPercent.left,
+                    fontSize: currentFontSize,
+                    isVertical: isVertical
+                });
+                
+                liff.closeWindow();
+            } catch (err) { 
+                console.error(err);
+                alert("送出失敗：" + err.message);
+            }
         }
 
         function openEditor(absolutePath, relativePath) {
@@ -226,8 +318,8 @@
             const scale = container.clientWidth / FLEX_BUBBLE_WIDTH;
             const scaledFontSize = currentFontSize * scale;
             
-            const scaledPaddingV = (isVertical ? 10 : 5) * scale;
-            const scaledPaddingH = (isVertical ? 5 : 10) * scale;
+            const scaledPaddingV = 1 * scale;
+            const scaledPaddingH = 1 * scale;
             const scaledRadius = 8 * scale;
 
             dragItem.style.fontSize = scaledFontSize + 'px';
@@ -380,10 +472,10 @@
                                 offsetStart: positionPercent.left,
                                 backgroundColor: "#FFFFFFE6",
                                 cornerRadius: "8px",
-                                paddingTop: isVertical ? "10px" : "5px",
-                                paddingBottom: isVertical ? "10px" : "5px",
-                                paddingStart: isVertical ? "5px" : "10px",
-                                paddingEnd: isVertical ? "5px" : "10px",
+                                paddingTop: "1px",
+                                paddingBottom: "1px",
+                                paddingStart: "1px",
+                                paddingEnd: "1px",
                                 spacing: isVertical ? "0px" : "none", // 直式強制元件推疊間距為 0
                                 contents: textContents
                             }
@@ -393,10 +485,24 @@
             };
         }
 
+        function saveCurrentState() {
+            const rawText = document.getElementById('customText').value;
+            saveToRecent({
+                absolutePath: currentSelectedImageUrl,
+                relativePath: document.getElementById('previewImg').src,
+                text: rawText.trim() === "" ? "無文字" : rawText,
+                top: positionPercent.top,
+                left: positionPercent.left,
+                fontSize: currentFontSize,
+                isVertical: isVertical
+            });
+        }
+
         document.getElementById('btnSendDirect').addEventListener('click', async () => {
             const flexMsg = buildFlexMessage(currentSelectedImageUrl, document.getElementById('customText').value);
             try {
                 await liff.sendMessages([flexMsg]);
+                saveCurrentState();
                 liff.closeWindow(); 
             } catch (err) { console.error(err); }
         });
@@ -405,7 +511,10 @@
             const flexMsg = buildFlexMessage(currentSelectedImageUrl, document.getElementById('customText').value);
             try {
                 const result = await liff.shareTargetPicker([flexMsg]);
-                if (result) liff.closeWindow();
+                if (result) {
+                    saveCurrentState();
+                    liff.closeWindow();
+                }
             } catch (err) { }
         });
 
