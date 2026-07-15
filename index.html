@@ -16,14 +16,12 @@
         .meme-item:active { transform: scale(0.95); }
         .meme-img { width: 100%; height: 140px; object-fit: cover; border-radius: 8px; }
         
-        /* 編輯器面板 */
         #editor { 
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0,0,0,0.85); flex-direction: column; justify-content: center; align-items: center; z-index: 100;
         }
         .editor-card { background: white; padding: 20px; border-radius: 15px; width: 90%; max-width: 380px; text-align: left; }
         
-        /* 💡 預覽區塊：正方形 1:1，加上透明棋盤格底色證明去背 */
         .preview-container {
             position: relative;
             width: 100%;
@@ -38,35 +36,50 @@
             border-radius: 8px;
             overflow: hidden;
             margin-bottom: 15px;
-            touch-action: none; /* 防止在預覽區滑動時滾動網頁 */
+            touch-action: none;
         }
         
         .preview-container img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
         
-        /* 💡 可拖曳的文字方塊 */
+        /* 💡 精準對齊 Flex Message 參數 */
         #draggableText {
             position: absolute;
-            top: 75%; /* 預設位置 */
+            top: 75%; 
             left: 10%;
-            background-color: rgba(255, 255, 255, 0.9);
-            padding: 5px 10px;
+            background-color: rgba(255, 255, 255, 0.9); /* 等同 Flex 的 #FFFFFFE6 */
+            padding: 5px 10px; 
             border-radius: 8px;
             color: #000;
             font-weight: bold;
             font-size: 16px;
             cursor: grab;
             user-select: none;
-            max-width: 80%;
             word-wrap: break-word;
+            white-space: pre-wrap; /* 允許 \n 生效，完全模擬 LINE 解析模式 */
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            box-sizing: border-box; /* 確保 padding 計算正確 */
         }
         #draggableText:active { cursor: grabbing; }
         
         label { font-size: 14px; font-weight: bold; color: #555; display: block; margin-top: 10px; }
         input[type="text"] { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; font-size: 16px; }
         
+        .toolbar {
+            display: flex; align-items: center; gap: 8px; margin-top: 10px;
+            background: #f1f3f5; padding: 10px; border-radius: 8px;
+        }
+        .toolbar label { margin: 0; font-size: 14px; color: #555; font-weight: bold; }
+        .btn-tool {
+            background: white; border: 1px solid #ccc; border-radius: 6px; 
+            padding: 6px 12px; font-size: 16px; cursor: pointer; font-weight: bold;
+            color: #333; transition: 0.2s;
+        }
+        .btn-tool:active { background: #e9ecef; }
+        .btn-rotate { margin-left: auto; font-size: 18px; padding: 4px 10px; }
+
         .btn-group { display: flex; gap: 8px; margin-top: 20px; }
-        .btn { flex: 1; padding: 12px 5px; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
+        .btn { flex: 1; padding: 12px 5px; font-size: 15px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: opacity 0.2s; }
+        .btn:active { opacity: 0.7; }
         .btn-cancel { background: #e0e0e0; color: #333; }
         .btn-send-direct { background: #06C755; color: white; display: none; }
         .btn-share-picker { background: #4A90E2; color: white; }
@@ -80,14 +93,22 @@
 
     <div id="editor">
         <div class="editor-card">
-            <!-- 即時預覽區塊 -->
             <div class="preview-container" id="previewBox">
                 <img id="previewImg" src="" alt="預覽">
                 <div id="draggableText">你的文字會在這裡...</div>
             </div>
             
-            <label>輸入自訂文字 (上方預覽可自由拖曳定位)：</label>
+            <label>輸入自訂文字：</label>
             <input type="text" id="customText" placeholder="輸入文字並試著拖曳上方框框...">
+            
+            <div class="toolbar">
+                <label>字體大小:</label>
+                <button class="btn-tool" id="btnFontMinus">-</button>
+                <span id="fontSizeDisplay" style="min-width: 40px; text-align: center; font-weight: bold;">16px</span>
+                <button class="btn-tool" id="btnFontPlus">+</button>
+                <!-- 💡 修改為只留單一符號 -->
+                <button class="btn-tool btn-rotate" id="btnToggleDir">↔️</button>
+            </div>
             
             <div class="btn-group">
                 <button class="btn btn-cancel" onclick="closeEditor()">取消</button>
@@ -99,12 +120,15 @@
 
     <script>
         let currentSelectedImageUrl = "";
-        
-        // 儲存拖曳後的相對百分比位置
         let positionPercent = { top: "75%", left: "10%" };
+        let currentFontSize = 16;
+        let isVertical = false;
 
         async function initializeLiff() {
             try {
+                if (typeof MY_LIFF_ID === 'undefined' || typeof memeList === 'undefined') {
+                    throw new Error("設定檔 (config.js) 遺失或變數未定義");
+                }
                 await liff.init({ liffId: MY_LIFF_ID });
                 if (!liff.isLoggedIn()) { liff.login(); return; }
                 document.getElementById('loading').style.display = 'none';
@@ -121,7 +145,7 @@
             memeList.forEach(meme => {
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'meme-item';
-                itemDiv.innerHTML = `<img src="./images/${meme.fileName}" class="meme-img">`;
+                itemDiv.innerHTML = `<img src="./images/${meme.fileName}" class="meme-img" alt="meme">`;
                 itemDiv.addEventListener('click', () => openEditor(baseUrl + meme.fileName, "./images/" + meme.fileName));
                 gallery.appendChild(itemDiv);
             });
@@ -131,35 +155,113 @@
             currentSelectedImageUrl = absolutePath;
             document.getElementById('previewImg').src = relativePath;
             
-            // 重置預覽文字與位置
-            const textInput = document.getElementById('customText');
+            document.getElementById('customText').value = ""; 
+            currentFontSize = 16;
+            isVertical = false;
+            
             const dragItem = document.getElementById('draggableText');
-            textInput.value = ""; 
-            dragItem.innerText = "這裡輸入文字...";
             dragItem.style.top = "75%";
             dragItem.style.left = "10%";
             positionPercent = { top: "75%", left: "10%" };
 
-            if (liff.getContext() && liff.getContext().type !== "none") {
+            if (liff.isInClient()) {
                 document.getElementById('btnSendDirect').style.display = 'block';
             } else {
                 document.getElementById('btnSendDirect').style.display = 'none';
             }
 
+            // 必須先顯示，clientWidth 才有值
             document.getElementById('editor').style.display = 'flex';
+            
+            updateTextStyles(); // 觸發樣式與文字更新
         }
 
         function closeEditor() {
             document.getElementById('editor').style.display = 'none';
         }
 
-        // 💡 即時同步輸入文字到預覽框
-        document.getElementById('customText').addEventListener('input', (e) => {
-            const dragItem = document.getElementById('draggableText');
-            dragItem.innerText = e.target.value.trim() === "" ? " " : e.target.value;
+        // 監聽輸入框時，直接呼叫 updateTextStyles() 以維持直排轉換邏輯
+        document.getElementById('customText').addEventListener('input', updateTextStyles);
+
+        document.getElementById('btnFontPlus').addEventListener('click', () => {
+            currentFontSize = Math.min(currentFontSize + 2, 60);
+            updateTextStyles();
         });
 
-        // 💡 拖曳引擎實作 (支援手機觸控與電腦滑鼠)
+        document.getElementById('btnFontMinus').addEventListener('click', () => {
+            currentFontSize = Math.max(currentFontSize - 2, 10);
+            updateTextStyles();
+        });
+
+        document.getElementById('btnToggleDir').addEventListener('click', () => {
+            isVertical = !isVertical;
+            updateTextStyles();
+        });
+
+        const FLEX_BUBBLE_WIDTH = 300; 
+
+        function updateTextStyles() {
+            const dragItem = document.getElementById('draggableText');
+            const container = document.getElementById('previewBox');
+            const rawText = document.getElementById('customText').value;
+            const safeText = rawText.trim() === "" ? "這裡輸入文字..." : rawText;
+            
+            const verticalPunctuationMap = {
+                '，': '︐', '。': '︒', '、': '︑', '：': '︓', '；': '︔', '！': '︕', '？': '︖',
+                '（': '︵', '）': '︶', '【': '︻', '】': '︼', '《': '︽', '》': '︾',
+                '「': '﹁', '」': '﹂', '『': '﹃', '』': '﹄', '(': '︵', ')': '︶',
+                '[': '︻', ']': '︼', '<': '︽', '>': '︾'
+            };
+
+            let finalText = safeText;
+            if (isVertical) {
+                finalText = Array.from(safeText).map(c => verticalPunctuationMap[c] || c).join('\n');
+                dragItem.style.textAlign = 'center';
+            } else {
+                dragItem.style.textAlign = 'left';
+            }
+
+            dragItem.innerText = finalText; 
+            
+            const scale = container.clientWidth / FLEX_BUBBLE_WIDTH;
+            const scaledFontSize = currentFontSize * scale;
+            
+            const scaledPaddingV = (isVertical ? 10 : 5) * scale;
+            const scaledPaddingH = (isVertical ? 5 : 10) * scale;
+            const scaledRadius = 8 * scale;
+
+            dragItem.style.fontSize = scaledFontSize + 'px';
+            dragItem.style.padding = `${scaledPaddingV}px ${scaledPaddingH}px`;
+            dragItem.style.borderRadius = `${scaledRadius}px`;
+            
+            // 💡 針對直橫排設定最精準的 HTML 行高
+            // 橫排 1.4；直排根據測試微調，目前設定為 1.45 尋求最佳視覺同步
+            dragItem.style.lineHeight = isVertical ? '1.45' : '1.4';
+            
+            document.getElementById('fontSizeDisplay').innerText = currentFontSize + 'px';
+            document.getElementById('btnToggleDir').innerText = isVertical ? '↕️' : '↔️';
+
+            setTimeout(() => {
+                let currentLeft = parseFloat(dragItem.style.left) || dragItem.offsetLeft;
+                let currentTop = parseFloat(dragItem.style.top) || dragItem.offsetTop;
+                
+                dragItem.style.maxWidth = (container.clientWidth - currentLeft) + "px";
+
+                const maxLeft = container.clientWidth - dragItem.clientWidth;
+                const maxTop = container.clientHeight - dragItem.clientHeight;
+                let newLeft = Math.max(0, Math.min(currentLeft, maxLeft));
+                let newTop = Math.max(0, Math.min(currentTop, maxTop));
+                
+                dragItem.style.left = newLeft + 'px';
+                dragItem.style.top = newTop + 'px';
+                
+                dragItem.style.maxWidth = (container.clientWidth - newLeft) + "px";
+                
+                positionPercent.left = ((newLeft / container.clientWidth) * 100).toFixed(1) + '%';
+                positionPercent.top = ((newTop / container.clientHeight) * 100).toFixed(1) + '%';
+            }, 10);
+        }
+
         const dragItem = document.getElementById('draggableText');
         const container = document.getElementById('previewBox');
         let isDragging = false, startX, startY, initialLeft, initialTop;
@@ -167,25 +269,26 @@
         function startDrag(e) {
             if (e.target !== dragItem) return;
             isDragging = true;
-            let clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
-            let clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
             startX = clientX;
             startY = clientY;
-            initialLeft = dragItem.offsetLeft;
-            initialTop = dragItem.offsetTop;
+            initialLeft = parseFloat(dragItem.style.left) || dragItem.offsetLeft;
+            initialTop = parseFloat(dragItem.style.top) || dragItem.offsetTop;
             e.preventDefault(); 
         }
 
         function doDrag(e) {
             if (!isDragging) return;
             e.preventDefault();
-            let clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
-            let clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
             
             let newLeft = initialLeft + (clientX - startX);
             let newTop = initialTop + (clientY - startY);
 
-            // 邊界限制 (不讓字跑出框外)
+            dragItem.style.maxWidth = (container.clientWidth - newLeft) + "px";
+
             const maxLeft = container.clientWidth - dragItem.clientWidth;
             const maxTop = container.clientHeight - dragItem.clientHeight;
             newLeft = Math.max(0, Math.min(newLeft, maxLeft));
@@ -193,8 +296,8 @@
 
             dragItem.style.left = newLeft + 'px';
             dragItem.style.top = newTop + 'px';
+            dragItem.style.maxWidth = (container.clientWidth - newLeft) + "px";
 
-            // 換算成百分比給 LINE Flex Message 使用
             positionPercent.left = ((newLeft / container.clientWidth) * 100).toFixed(1) + '%';
             positionPercent.top = ((newTop / container.clientHeight) * 100).toFixed(1) + '%';
         }
@@ -209,17 +312,53 @@
         window.addEventListener('touchend', stopDrag);
 
 
-        // 核心排版引擎：組合 Flex Message，並使用 absolute 定位
-        function buildFlexMessage(imageUrl, textValue) {
+        function buildFlexMessage(imageUrl, rawText) {
+            const safeText = rawText.trim() === "" ? " " : rawText;
+            
+            const verticalPunctuationMap = {
+                '，': '︐', '。': '︒', '、': '︑', '：': '︓', '；': '︔', '！': '︕', '？': '︖',
+                '（': '︵', '）': '︶', '【': '︻', '】': '︼', '《': '︽', '》': '︾',
+                '「': '﹁', '」': '﹂', '『': '﹃', '』': '﹄', '(': '︵', ')': '︶',
+                '[': '︻', ']': '︼', '<': '︽', '>': '︾'
+            };
+                
+            const finalSize = currentFontSize + "px";
+
+            let textContents = [];
+            
+            if (isVertical) {
+                // 💡 徹底解決 \n 行距過大問題：將每個字獨立成 text 元件，並將 box spacing 設為 0
+                const verticalChars = Array.from(safeText).map(c => verticalPunctuationMap[c] || c);
+                // 限制字數，避免 Flex Message 陣列超過 100 個元件的上限
+                const limitedChars = verticalChars.slice(0, 90);
+                for (let char of limitedChars) {
+                    textContents.push({
+                        type: "text",
+                        text: char,
+                        weight: "bold",
+                        size: finalSize,
+                        color: "#000000",
+                        align: "center"
+                    });
+                }
+            } else {
+                textContents.push({
+                    type: "text",
+                    text: safeText,
+                    weight: "bold",
+                    size: finalSize,
+                    color: "#000000",
+                    wrap: true,
+                    align: "start"
+                });
+            }
+
             return {
                 type: "flex",
-                altText: "傳送了一張迷因貼圖！",
+                altText: "你收到了一張自訂迷因！",
                 contents: {
                     type: "bubble",
                     size: "mega",
-                    styles: {
-                        body: { backgroundColor: "#00000000" } // 泡泡底強制完全透明
-                    },
                     body: {
                         type: "box",
                         layout: "vertical",
@@ -231,20 +370,22 @@
                                 size: "full", 
                                 aspectMode: "fit", 
                                 aspectRatio: "1:1",
-                                backgroundColor: "#00000000" // 圖片底色強制透明
+                                flex: 0 
                             },
                             { 
                                 type: "box", 
                                 layout: "vertical",
-                                position: "absolute",       // 啟動絕對定位！
-                                offsetTop: positionPercent.top,   // 帶入剛剛拖曳算出的 Y 軸 % 數
-                                offsetStart: positionPercent.left, // 帶入剛剛拖曳算出的 X 軸 % 數
-                                backgroundColor: "#FFFFFFE6", 
-                                cornerRadius: "md",
-                                paddingAll: "sm",
-                                contents: [
-                                    { type: "text", text: textValue || " ", weight: "bold", size: "md", color: "#000000", wrap: true }
-                                ]
+                                position: "absolute",
+                                offsetTop: positionPercent.top,
+                                offsetStart: positionPercent.left,
+                                backgroundColor: "#FFFFFFE6",
+                                cornerRadius: "8px",
+                                paddingTop: isVertical ? "10px" : "5px",
+                                paddingBottom: isVertical ? "10px" : "5px",
+                                paddingStart: isVertical ? "5px" : "10px",
+                                paddingEnd: isVertical ? "5px" : "10px",
+                                spacing: isVertical ? "0px" : "none", // 直式強制元件推疊間距為 0
+                                contents: textContents
                             }
                         ]
                     }
@@ -252,13 +393,12 @@
             };
         }
 
-        // 發送按鈕事件綁定
         document.getElementById('btnSendDirect').addEventListener('click', async () => {
             const flexMsg = buildFlexMessage(currentSelectedImageUrl, document.getElementById('customText').value);
             try {
                 await liff.sendMessages([flexMsg]);
                 liff.closeWindow(); 
-            } catch (err) { alert("發送失敗！"); }
+            } catch (err) { console.error(err); }
         });
 
         document.getElementById('btnSharePicker').addEventListener('click', async () => {
@@ -266,7 +406,7 @@
             try {
                 const result = await liff.shareTargetPicker([flexMsg]);
                 if (result) liff.closeWindow();
-            } catch (err) { /* 使用者取消轉傳 */ }
+            } catch (err) { }
         });
 
         initializeLiff();
